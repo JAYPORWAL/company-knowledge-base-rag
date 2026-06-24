@@ -107,8 +107,23 @@ def get_settings() -> Settings:
     Raises ConfigurationError if the validation fails.
     """
     try:
-        # Load from environment and .env file
-        return Settings()
+        # 1. Start with a copy of all environment variables
+        import os
+        config_data = dict(os.environ)
+
+        # 2. Attempt to load secrets from Streamlit if running inside Streamlit
+        try:
+            import streamlit as st
+            # st.secrets exposes a dict-like interface
+            for key in st.secrets.keys():
+                config_data[key] = str(st.secrets[key])
+        except Exception:
+            # Not running in Streamlit, or Streamlit not installed (e.g. running CLI unit tests)
+            pass
+
+        # 3. Filter keys to keep only valid Settings fields and instantiate Settings
+        valid_keys = {k: v for k, v in config_data.items() if k in Settings.model_fields}
+        return Settings(**valid_keys)
     except Exception as e:
         raise ConfigurationError(
             message=f"Application configuration validation failed: {str(e)}",
