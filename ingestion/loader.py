@@ -125,6 +125,9 @@ class DocumentLoader:
             # Step 6: Map metadata schema variables across all LlamaIndex document objects
             for doc in documents:
                 doc.metadata.update(extra_info)
+                # Remove nested dict to prevent ChromaDB metadata flat schema errors
+                if "extra_info" in doc.metadata:
+                    del doc.metadata["extra_info"]
                 doc.doc_id = f"{doc_id}_{doc.doc_id}"
 
             logger.info(

@@ -59,7 +59,7 @@ graph TD
 
 - **RAG Orchestrator:** `LlamaIndex`
 - **Large Language Model:** Gemini 2.5 Flash (`gemini-2.5-flash`)
-- **Embedding Model:** Gemini Text Embedding (`models/text-embedding-004`)
+- **Embedding Model:** Gemini Text Embedding (`models/gemini-embedding-001`)
 - **Vector Database:** `ChromaDB` (persistent local storage)
 - **Frontend / UI:** `Streamlit`
 - **Evaluation:** `RAGAS`
@@ -149,7 +149,7 @@ Configure the following variables inside `.env`:
 | `MODEL_PROVIDER` | LLM service provider | `gemini` |
 | `EMBEDDING_PROVIDER` | Embedding service provider | `gemini` |
 | `LLM_MODEL` | Gemini LLM name | `gemini-2.5-flash` |
-| `EMBEDDING_MODEL` | Gemini embedding model | `models/text-embedding-004` |
+| `EMBEDDING_MODEL` | Gemini embedding model | `models/gemini-embedding-001` |
 | `CHROMA_DB_PATH` | Storage directory for ChromaDB | `./data/chromadb` |
 | `CHROMA_COLLECTION_NAME` | Name of Chroma collection | `company_knowledge_base` |
 | `DATA_RAW_DIR` | Directory for raw uploaded documents | `./data/raw` |

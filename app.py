@@ -1,5 +1,7 @@
 import streamlit as st
 import traceback
+import datetime
+import os
 from pathlib import Path
 from loguru import logger
 
@@ -8,6 +10,7 @@ from config.logging_config import configure_logging
 from utils.health_check import HealthChecker
 from rag.index_builder import IndexBuilder
 from rag.query_engine import RAGQueryEngine
+from llama_index.core import StorageContext, VectorStoreIndex
 
 # 1. Page Configuration (Must be first Streamlit command)
 st.set_page_config(
@@ -233,40 +236,139 @@ with st.sidebar:
             raw_dir.mkdir(parents=True, exist_ok=True)
             
             p_bar = st.progress(0)
-            status_lbl = st.empty()
             
             success_count = 0
             duplicate_count = 0
+            total_chunks = 0
             
             for idx, uploaded_file in enumerate(uploaded_files):
-                status_lbl.text(f"Processing: {uploaded_file.name}...")
-                
-                # Sanitize filename to prevent path traversal
-                safe_filename = Path(uploaded_file.name).name
-                local_file_path = raw_dir / safe_filename
-                
-                # Write file buffers
-                with open(local_file_path, "wb") as f:
-                    f.write(uploaded_file.getbuffer())
-                
-                try:
-                    record = index_builder.ingest_file(local_file_path)
-                    if record:
+                with st.status(f"Ingesting: {uploaded_file.name}", expanded=True) as status:
+                    try:
+                        # 1. Upload received
+                        status.write("📥 File received from Streamlit file uploader.")
+                        logger.info("Upload received: {} (size: {} bytes)", uploaded_file.name, uploaded_file.size)
+                        
+                        # Sanitize filename to prevent path traversal
+                        safe_filename = Path(uploaded_file.name).name
+                        local_file_path = raw_dir / safe_filename
+                        
+                        # 2. File saved to disk
+                        status.write(f"💾 Saving file to disk: `{local_file_path}`")
+                        with open(local_file_path, "wb") as f:
+                            f.write(uploaded_file.getbuffer())
+                        
+                        if not local_file_path.is_file():
+                            raise FileNotFoundError(f"File was not written to disk successfully: {local_file_path}")
+                        status.write("✔️ File successfully written to disk.")
+                        
+                        # 3. Resolve Loader
+                        status.write("🔍 Resolving compatible parser reader...")
+                        ext = local_file_path.suffix.lower().lstrip(".")
+                        reader = index_builder.loader.parser_registry.get_reader_for_extension(ext)
+                        if not reader:
+                            raise ValueError(f"No reader registered for extension: '.{ext}'")
+                        status.write(f"✔️ Found reader: `{reader.__class__.__name__}`")
+                        
+                        # 4. Loader started & Documents loaded
+                        status.write("📄 Loading and parsing document content...")
+                        documents = index_builder.loader.load_file(local_file_path)
+                        
+                        if documents is None:
+                            duplicate_count += 1
+                            status.write("⚠️ Duplicate file detected via SHA256 checksum. Ingestion skipped.")
+                            status.update(label=f"⚠️ Skipped (Duplicate): {uploaded_file.name}", state="complete")
+                            continue
+                            
+                        if len(documents) == 0:
+                            duplicate_count += 1
+                            status.write("⚠️ Ingestion returned 0 documents (possibly duplicate or empty).")
+                            status.update(label=f"⚠️ Skipped: {uploaded_file.name}", state="complete")
+                            continue
+                            
+                        status.write(f"📄 Loaded {len(documents)} document pages/objects successfully.")
+                        
+                        # 5. Chunker started & Chunk count
+                        status.write("✂️ Chunker started. Splitting documents into text nodes...")
+                        nodes = index_builder.chunker.chunk_documents(documents)
+                        if not nodes:
+                            raise ValueError("Chunker generated 0 nodes from the document.")
+                        status.write(f"✂️ Chunker completed. Created {len(nodes)} node chunks.")
+                        
+                        # 6. Embedding Generation test & setup
+                        status.write("🧬 Generating embeddings for nodes...")
+                        # Run a quick check that embedding API works
+                        test_embed = index_builder.embed_model.get_text_embedding("test_connection")
+                        if not test_embed or len(test_embed) == 0:
+                            raise ValueError("Embedding model generated empty vectors.")
+                        status.write("🧬 Embedding API connectivity verified. Computing node embeddings...")
+                        
+                        # 7. Chroma insert completed
+                        status.write("💾 Inserting node chunks into ChromaDB persistent collection...")
+                        storage_context = StorageContext.from_defaults(vector_store=index_builder.vector_store)
+                        
+                        try:
+                            # Try inserting into existing index
+                            index = index_builder.get_index()
+                            index.insert_nodes(nodes)
+                            status.write("💾 Appended nodes to existing VectorStoreIndex.")
+                        except Exception:
+                            # Initialize new index structure if collection is empty
+                            status.write("💾 Initializing new VectorStoreIndex database structure...")
+                            index = VectorStoreIndex(
+                                nodes=nodes,
+                                storage_context=storage_context
+                            )
+                            status.write("💾 Created new VectorStoreIndex collection.")
+                            
+                        # Verify collection count
+                        collection = index_builder.vector_store_provider._client.get_collection(
+                            name=index_builder.settings.CHROMA_COLLECTION_NAME
+                        )
+                        col_count = collection.count()
+                        status.write(f"✔️ ChromaDB collection updated. Total collection size: {col_count} vectors.")
+                        
+                        # 8. Index persisted (Chroma persistent client writes automatically)
+                        status.write("💾 Saving metadata registry record to disk...")
+                        sample_doc = documents[0]
+                        record = index_builder.registry.register_document(
+                            document_id=sample_doc.metadata["document_id"],
+                            filename=sample_doc.metadata["filename"],
+                            file_type=sample_doc.metadata["file_type"],
+                            sha256_hash=sample_doc.metadata["sha256_hash"],
+                            source=str(local_file_path),
+                            chunk_count=len(nodes)
+                        )
+                        status.write("💾 Registry database saved successfully.")
+                        
+                        # 9. Session updated
                         success_count += 1
-                        st.success(f"Success: {uploaded_file.name} ({record['chunk_count']} nodes)")
-                    else:
-                        duplicate_count += 1
-                        st.warning(f"Skipped duplicate: {uploaded_file.name}")
-                except Exception as ex:
-                    st.error(f"Error: {uploaded_file.name} - {str(ex)}")
-                    logger.error("Ingestion failed: {}", traceback.format_exc())
+                        total_chunks += len(nodes)
+                        
+                        status.update(label=f"✅ Successfully Indexed: {uploaded_file.name}", state="complete")
+                        
+                    except Exception as ex:
+                        err_trace = traceback.format_exc()
+                        logger.error("Ingestion failed for '{}': {}", uploaded_file.name, err_trace)
+                        status.write(f"❌ Error during stage: `{str(ex)}`")
+                        status.update(label=f"❌ Ingestion Failed: {uploaded_file.name}", state="error")
+                        st.error(f"Error indexing `{uploaded_file.name}`: {str(ex)}")
+                        with st.expander("Show Ingestion Error Stack Trace"):
+                            st.code(err_trace)
                 
                 p_bar.progress((idx + 1) / len(uploaded_files))
             
-            status_lbl.text("Ingestion completed.")
-            st.balloons()
-            st.info(f"Ingested: {success_count} | Skipped: {duplicate_count}")
-            st.rerun()
+            # 10. Refresh Document Catalog & Session State
+            if success_count > 0:
+                st.session_state.catalog_last_refreshed = datetime.datetime.now(datetime.timezone.utc).isoformat()
+                st.success(f"""
+                ✅ Documents indexed successfully.
+                * **Indexed Documents:** {success_count}
+                * **Chunks Created:** {total_chunks}
+                * **Embeddings Generated:** {total_chunks}
+                """)
+                st.balloons()
+            else:
+                st.warning(f"Ingestion process completed. Ingested: 0 | Skipped: {duplicate_count}")
 
     st.markdown("---")
     st.markdown("### ⚙️ Pipeline Settings")
@@ -316,7 +418,7 @@ except Exception:
     pass
 
 # Tab Layout
-tab_chat, tab_catalog = st.tabs(["💬 Interactive Q&A Chat", "📄 Document Catalog"])
+tab_chat, tab_catalog, tab_diagnostics = st.tabs(["💬 Interactive Q&A Chat", "📄 Document Catalog", "📊 Ingestion Diagnostics"])
 
 with tab_chat:
     if not index_ready:
@@ -454,3 +556,58 @@ with tab_catalog:
             )
             
         st.markdown("\n".join(table_content))
+
+with tab_diagnostics:
+    st.markdown("### 📊 Ingestion & DB Diagnostics")
+    
+    try:
+        docs = index_builder.registry.get_all_registered_documents()
+        doc_count = len(docs)
+        total_chunks_db = sum(doc["chunk_count"] for doc in docs.values())
+        
+        # Get count from Chroma collection directly
+        collection = index_builder.vector_store_provider._client.get_collection(
+            name=index_builder.settings.CHROMA_COLLECTION_NAME
+        )
+        chroma_vector_count = collection.count()
+        
+        # Get last indexing timestamp
+        last_ts = "None"
+        if docs:
+            timestamps = [doc["upload_timestamp"] for doc in docs.values()]
+            last_ts = max(timestamps).split(".")[0].replace("T", " ") + " UTC"
+            
+        # Get embedding status
+        embed_status = "🟢 Active & Verified"
+        try:
+            index_builder.embed_model.get_text_embedding("test_diagnostics")
+        except Exception as e:
+            embed_status = f"🔴 FAILED: {str(e)}"
+            
+        col_d1, col_d2 = st.columns(2)
+        with col_d1:
+            st.metric("Indexed Files (Registry)", f"{doc_count}")
+            st.metric("Total Chunks (Registry)", f"{total_chunks_db}")
+            st.metric("Embedding Model Status", embed_status)
+        with col_d2:
+            st.metric("ChromaDB Vector Count", f"{chroma_vector_count}")
+            st.metric("Last Indexing Timestamp", f"{last_ts}")
+            st.metric("Database Path", f"{settings.CHROMA_DB_PATH}")
+            
+        st.markdown("#### Raw Upload Directory Scan")
+        raw_dir = Path(settings.DATA_RAW_DIR)
+        if raw_dir.exists():
+            raw_files = [f.name for f in raw_dir.iterdir() if f.is_file()]
+            if raw_files:
+                st.write(f"Found {len(raw_files)} files in raw upload directory:")
+                for rf in raw_files:
+                    is_reg = any(doc["filename"] == rf for doc in docs.values())
+                    status_emoji = "✅ Indexed" if is_reg else "⚠️ Not Indexed (Failed/Stale)"
+                    st.markdown(f"- `{rf}` ({status_emoji})")
+            else:
+                st.caption("No raw files found in directory.")
+        else:
+            st.caption("Raw directory does not exist yet.")
+            
+    except Exception as d_ex:
+        st.error(f"Failed to compile database diagnostics: {str(d_ex)}")

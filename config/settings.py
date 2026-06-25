@@ -22,7 +22,7 @@ class Settings(BaseSettings):
         description="LLM Model version"
     )
     EMBEDDING_MODEL: str = Field(
-        default="models/text-embedding-004",
+        default="models/gemini-embedding-001",
         description="Embedding Model version"
     )
 

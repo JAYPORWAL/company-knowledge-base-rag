@@ -60,7 +60,7 @@ Since the application requires the `GEMINI_API_KEY` to query the LLM and generat
    MODEL_PROVIDER = "gemini"
    EMBEDDING_PROVIDER = "gemini"
    LLM_MODEL = "gemini-2.5-flash"
-   EMBEDDING_MODEL = "models/text-embedding-004"
+   EMBEDDING_MODEL = "models/gemini-embedding-001"
 
    # Local ChromaDB persistent path (runs within the cloud instance container)
    CHROMA_DB_PATH = "./data/chromadb"
