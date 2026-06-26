@@ -21,7 +21,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # 5. Create storage directories for data persistence and logs
-RUN mkdir -p data/raw data/processed data/chromadb logs
+RUN mkdir -p data/raw data/uploads data/processed data/chromadb logs
 
 # 6. Expose port mapping
 EXPOSE 8501

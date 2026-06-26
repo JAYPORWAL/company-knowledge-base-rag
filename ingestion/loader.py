@@ -27,7 +27,7 @@ class DocumentLoader:
         self.registry = registry
         self.parser_registry = parser_registry or DocumentParserRegistry()
         self.max_file_size_bytes = max_file_size_bytes
-        self.allowed_extensions: Set[str] = {"pdf", "docx", "txt", "pptx", "md"}
+        self.allowed_extensions: Set[str] = {"pdf", "docx", "txt", "pptx", "md", "html", "htm"}
 
     def validate_file(self, file_path: Path) -> None:
         """

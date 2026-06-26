@@ -158,6 +158,7 @@ Thumbs.db
 data/chromadb/
 data/processed/
 data/raw/
+data/uploads/
 chroma_db/
 logs/
 .webassets-cache

@@ -3,7 +3,7 @@ from typing import Dict, List, Optional, Any
 from loguru import logger
 from llama_index.core import Document
 from llama_index.core.readers.base import BaseReader
-from llama_index.readers.file import PDFReader, DocxReader, PptxReader, MarkdownReader
+from llama_index.readers.file import PDFReader, DocxReader, PptxReader, MarkdownReader, HTMLTagReader
 
 class TextFileReader(BaseReader):
     """
@@ -65,6 +65,14 @@ class DocumentParserRegistry:
             logger.debug("Registered MarkdownReader for .md")
         except Exception as e:
             logger.warning("Failed to initialize MarkdownReader: {}", str(e))
+
+        # Register HTML Reader
+        try:
+            self._parsers["html"] = HTMLTagReader()
+            self._parsers["htm"] = HTMLTagReader()
+            logger.debug("Registered HTMLTagReader for .html and .htm")
+        except Exception as e:
+            logger.warning("Failed to initialize HTMLTagReader: {}", str(e))
 
     def get_reader_for_extension(self, extension: str) -> Optional[BaseReader]:
         """

@@ -54,3 +54,22 @@ The blocking bug preventing successful document indexing and UI feedback has bee
     * Embedding model connection status.
     * Last indexing timestamp (UTC).
     * Raw file directory scan (showing which uploaded files have been indexed vs. are stale on disk).
+
+---
+
+## 5. HTML Document Reader Integration (`ingestion/parser.py`)
+* **Before:**
+  * Ingestion only supported PDF, DOCX, TXT, PPTX, and MD. HTML/HTM documents were rejected because `DocumentParserRegistry` lacked an HTML reader mappings block.
+* **Fix:**
+  * Imported and registered `HTMLTagReader` from `llama_index.readers.file` under both `"html"` and `"htm"` extension keys in `DocumentParserRegistry._initialize_default_parsers()`.
+  * Expanded loader allowed extensions list in `DocumentLoader` to support `html` and `htm`.
+  * Updated the Streamlit file uploader widget type filters list to support `html` and `htm` formats.
+
+---
+
+## 6. Standardized Ingestion Uploads Folder Pathing (`config/settings.py`)
+* **Before:**
+  * The system saved files to `./data/raw` which differed from the expected `./data/uploads` temporary directory configuration.
+* **Fix:**
+  * Swapped default parameter value `DATA_RAW_DIR` to `./data/uploads` in Pydantic settings schema (`config/settings.py`).
+  * Updated `.env`, `.env.example`, `.streamlit/secrets.toml.example`, `.gitignore`, and `Dockerfile` to create, ignore, and default to `./data/uploads` instead of `./data/raw`.

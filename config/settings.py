@@ -38,7 +38,7 @@ class Settings(BaseSettings):
 
     # Ingestion Settings
     DATA_RAW_DIR: str = Field(
-        default="./data/raw",
+        default="./data/uploads",
         description="Folder path where users place raw documents"
     )
     DATA_PROCESSED_DIR: str = Field(

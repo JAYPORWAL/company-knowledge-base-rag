@@ -224,9 +224,9 @@ with st.sidebar:
     # Ingestion module inside sidebar
     st.markdown("### 📥 Ingest Documents")
     uploaded_files = st.file_uploader(
-        "Upload files (PDF, DOCX, TXT, PPTX, MD):",
+        "Upload files (PDF, DOCX, TXT, PPTX, MD, HTML):",
         accept_multiple_files=True,
-        type=["pdf", "docx", "txt", "pptx", "md"],
+        type=["pdf", "docx", "txt", "pptx", "md", "html", "htm"],
         key="sidebar_uploader"
     )
 

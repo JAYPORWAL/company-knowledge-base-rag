@@ -43,6 +43,23 @@ An end-to-end investigation was conducted on the Company Knowledge Base Q&A RAG 
 
 ---
 
+## 5. Missing HTML/HTM Document Parsing Support
+* **Symptom:** Ingestion pipeline failed or skipped HTML/HTM document uploads, throwing parsing registry exceptions.
+* **Root Cause:**
+  1. The `DocumentParserRegistry` in `ingestion/parser.py` was missing explicit registration for `.html` and `.htm` file extensions.
+  2. While other loaders like PDF and DOCX were imported and initialized, the HTML loader (`HTMLTagReader` from `llama_index.readers.file`) was neither imported nor mapped.
+  3. Consequently, uploading web-page documents resulted in failed parser resolutions.
+
+---
+
+## 6. Temporary File Storage Mismatch
+* **Symptom:** Uploaded files were written to `./data/raw` but Streamlit Cloud config templates and upload specifications expected all in-memory streams to be written to `./data/uploads` before ingestion.
+* **Root Cause:**
+  1. The system defaulted `DATA_RAW_DIR` to `./data/raw` across config files, causing a path directory naming mismatch with the QA test requirements.
+  2. Resolving all default paths to `./data/uploads` synchronizes local builds, Streamlit Cloud secrets configuration, and Docker container provisioning.
+
+---
+
 ## Ingestion Workflow Tracing
 
 ```mermaid
